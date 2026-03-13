@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -e
+
+DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$DIR"
+
+LOG_DIR="$DIR/logs"
+mkdir -p "$LOG_DIR"
+
+# Kill any existing server process on the port
+if lsof -ti:8080 > /dev/null 2>&1; then
+  kill $(lsof -ti:8080) 2>/dev/null || true
+  sleep 1
+fi
+
+# Truncate log
+: > "$LOG_DIR/server.log"
+
+echo "Starting server..."
+echo "Logging to logs/server.log"
+gleam run > "$LOG_DIR/server.log" 2>&1 &
+echo "Server started (PID $!) — tail -f logs/server.log"

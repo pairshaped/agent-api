@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Deploy to production server via Ansible.
+ansible-playbook ansible/deploy.yml -i ansible/inventory.ini

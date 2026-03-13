@@ -1,0 +1,16 @@
+[Unit]
+Description=Todo List MCP Server
+After=network.target
+
+[Service]
+Type=simple
+User={{ deploy_user }}
+Group={{ deploy_user }}
+WorkingDirectory={{ app_dir }}
+EnvironmentFile={{ app_dir }}/.env
+ExecStart=/usr/local/bin/gleam run
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,265 @@
+---
+# One-time server provisioning.
+# Usage: ansible-playbook ansible/setup.yml -i ansible/inventory.ini -e ansible_user=root
+#
+# First run requires root (-e ansible_user=root) to bootstrap the deploy user.
+# Play 1 creates the deploy user and disables root login.
+# Play 2 reconnects as deploy for everything else.
+# After this runs, all future runs go through the deploy user.
+
+# --- Play 1: Bootstrap (as root) ---
+
+- name: Bootstrap deploy user
+  hosts: servers
+  become: true
+  vars_files:
+    - vars.yml
+
+  tasks:
+    - name: Create deploy user
+      ansible.builtin.user:
+        name: "{{ deploy_user }}"
+        shell: /bin/bash
+        groups: sudo
+        append: true
+
+    - name: Allow deploy user passwordless sudo
+      ansible.builtin.copy:
+        content: "{{ deploy_user }} ALL=(ALL) NOPASSWD:ALL"
+        dest: "/etc/sudoers.d/{{ deploy_user }}"
+        mode: "0440"
+
+    - name: Ensure deploy .ssh directory
+      ansible.builtin.file:
+        path: "/home/{{ deploy_user }}/.ssh"
+        state: directory
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0700"
+
+    - name: Copy root SSH keys to deploy user
+      ansible.builtin.copy:
+        src: /root/.ssh/authorized_keys
+        dest: "/home/{{ deploy_user }}/.ssh/authorized_keys"
+        remote_src: true
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0600"
+
+    - name: Disable root login
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "^#?PermitRootLogin"
+        line: "PermitRootLogin no"
+      notify: Restart sshd
+
+    - name: Disable password authentication
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "^#?PasswordAuthentication"
+        line: "PasswordAuthentication no"
+      notify: Restart sshd
+
+  handlers:
+    - name: Restart sshd
+      ansible.builtin.systemd:
+        name: sshd
+        state: restarted
+
+# --- Play 2: Provision (as deploy) ---
+
+- name: Provision Todo List MCP Server
+  hosts: servers
+  become: true
+  vars_files:
+    - vars.yml
+  vars:
+    ansible_user: "{{ deploy_user }}"
+
+  tasks:
+    # --- Firewall ---
+
+    - name: Install ufw
+      ansible.builtin.apt:
+        name: ufw
+        state: present
+        update_cache: true
+
+    - name: Allow SSH
+      community.general.ufw:
+        rule: allow
+        port: "22"
+        proto: tcp
+
+    - name: Allow HTTP
+      community.general.ufw:
+        rule: allow
+        port: "80"
+        proto: tcp
+
+    - name: Allow HTTPS
+      community.general.ufw:
+        rule: allow
+        port: "443"
+        proto: tcp
+
+    - name: Enable ufw
+      community.general.ufw:
+        state: enabled
+
+    # --- Swap ---
+
+    - name: Check if swap file exists
+      ansible.builtin.stat:
+        path: /swapfile
+      register: swap_file
+
+    - name: Create swap file
+      ansible.builtin.command: fallocate -l {{ swap_size }} /swapfile
+      when: not swap_file.stat.exists
+
+    - name: Set swap file permissions
+      ansible.builtin.file:
+        path: /swapfile
+        mode: "0600"
+      when: not swap_file.stat.exists
+
+    - name: Make swap
+      ansible.builtin.command: mkswap /swapfile
+      when: not swap_file.stat.exists
+
+    - name: Enable swap
+      ansible.builtin.command: swapon /swapfile
+      when: not swap_file.stat.exists
+
+    - name: Add swap to fstab
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        line: "/swapfile none swap sw 0 0"
+        state: present
+
+    # --- Erlang + Gleam + SQLite ---
+
+    - name: Install Erlang, Rebar3, and SQLite
+      ansible.builtin.apt:
+        name:
+          - erlang
+          - rebar3
+          - build-essential
+          - sqlite3
+          - libsqlite3-dev
+          - git
+          - curl
+        state: present
+        update_cache: true
+
+    - name: Check if Gleam is installed
+      ansible.builtin.command: gleam --version
+      register: gleam_check
+      ignore_errors: true
+      changed_when: false
+
+    - name: Install Gleam
+      ansible.builtin.shell: |
+        ARCH=$(uname -m | sed 's/x86_64/x86_64/' | sed 's/aarch64/aarch64/')
+        curl -fsSL "https://github.com/gleam-lang/gleam/releases/download/v{{ gleam_version }}/gleam-v{{ gleam_version }}-${ARCH}-unknown-linux-musl.tar.gz" \
+          | tar xz -C /usr/local/bin
+      when: gleam_check.rc != 0 or gleam_version not in gleam_check.stdout
+
+    # --- Caddy ---
+
+    - name: Install Caddy dependencies
+      ansible.builtin.apt:
+        name:
+          - debian-keyring
+          - debian-archive-keyring
+          - apt-transport-https
+        state: present
+
+    - name: Add Caddy GPG key
+      ansible.builtin.shell: |
+        curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+      args:
+        creates: /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+
+    - name: Add Caddy apt repository
+      ansible.builtin.shell: |
+        curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
+      args:
+        creates: /etc/apt/sources.list.d/caddy-stable.list
+
+    - name: Install Caddy
+      ansible.builtin.apt:
+        name: caddy
+        state: present
+        update_cache: true
+
+    - name: Deploy Caddyfile
+      ansible.builtin.template:
+        src: templates/Caddyfile.j2
+        dest: /etc/caddy/Caddyfile
+        mode: "0644"
+      notify: Reload caddy
+
+    # --- App setup ---
+
+    - name: Clone repo
+      ansible.builtin.git:
+        repo: "{{ repo_url }}"
+        dest: "{{ app_dir }}"
+        version: main
+        accept_hostkey: true
+      become: false
+
+    - name: Generate .env
+      ansible.builtin.shell: |
+        SECRET=$(openssl rand -hex 32)
+        echo "SESSION_SECRET=$SECRET" > {{ app_dir }}/.env
+        echo "DOMAIN={{ domain }}" >> {{ app_dir }}/.env
+        echo "DB_PATH={{ app_dir }}/db/gleam_mcp_todo.db" >> {{ app_dir }}/.env
+        echo "PORT=8080" >> {{ app_dir }}/.env
+      args:
+        creates: "{{ app_dir }}/.env"
+      become: false
+
+    - name: Build
+      ansible.builtin.command:
+        cmd: gleam build
+        chdir: "{{ app_dir }}"
+      become: false
+
+    - name: Run migrations
+      ansible.builtin.command:
+        cmd: bin/migrate
+        chdir: "{{ app_dir }}"
+      become: false
+
+    - name: Install systemd service
+      ansible.builtin.template:
+        src: templates/gleam-mcp-todo.service.j2
+        dest: /etc/systemd/system/gleam-mcp-todo.service
+        mode: "0644"
+      notify:
+        - Reload systemd
+        - Restart gleam-mcp-todo
+
+    - name: Enable and start gleam-mcp-todo
+      ansible.builtin.systemd:
+        name: gleam-mcp-todo
+        enabled: true
+        state: started
+
+  handlers:
+    - name: Reload caddy
+      ansible.builtin.systemd:
+        name: caddy
+        state: reloaded
+
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Restart gleam-mcp-todo
+      ansible.builtin.systemd:
+        name: gleam-mcp-todo
+        state: restarted

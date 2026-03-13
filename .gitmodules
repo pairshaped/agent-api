@@ -1,0 +1,4 @@
+[submodule "lib/glimit"]
+	path = lib/glimit
+	url = https://github.com/pairshaped/glimit.git
+	branch = sliding-window

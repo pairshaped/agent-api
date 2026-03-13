@@ -1,0 +1,6 @@
+deploy_user: deploy
+app_dir: /home/deploy/gleam-mcp-todo
+repo_url: git@github.com:your-org/gleam-mcp-todo.git
+domain: your-server.example.com
+gleam_version: "1.14.0"
+swap_size: 1G

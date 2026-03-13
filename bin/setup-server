@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# One-time setup for a fresh server.
+# Run from your local machine: bin/setup-server
+# Configure DEPLOY_HOST, DEPLOY_USER, and REPO_URL in .env
+
+[ -f .env ] || { echo "Missing .env — copy .env.example and configure it"; exit 1; }
+source .env
+
+SERVER="${DEPLOY_USER}@${DEPLOY_HOST}"
+APP_DIR="/home/${DEPLOY_USER}/gleam-mcp-todo"
+
+echo "=== Installing Docker ==="
+ssh "$SERVER" << 'EOF'
+  # Install Docker (official method)
+  if ! command -v docker &> /dev/null; then
+    curl -fsSL https://get.docker.com | sh
+    sudo usermod -aG docker deploy
+    echo "Docker installed. You may need to log out and back in for group to take effect."
+  else
+    echo "Docker already installed."
+  fi
+EOF
+
+echo ""
+echo "=== Cloning repo ==="
+ssh -A "$SERVER" << EOF
+  if [ ! -d "$APP_DIR" ]; then
+    git clone "$REPO_URL" "$APP_DIR"
+  else
+    echo "Repo already cloned."
+  fi
+EOF
+
+echo ""
+echo "=== Creating .env ==="
+ssh "$SERVER" << EOF
+  if [ ! -f "$APP_DIR/.env" ]; then
+    SECRET=\$(openssl rand -hex 32)
+    echo "SESSION_SECRET=\$SECRET" > "$APP_DIR/.env"
+    echo "DOMAIN=${DEPLOY_HOST}" >> "$APP_DIR/.env"
+    echo ".env created with generated secret."
+  else
+    echo ".env already exists."
+  fi
+EOF
+
+echo ""
+echo "=== Done ==="
+echo "Next steps:"
+echo "  1. Log out and back in (for docker group): ssh $SERVER"
+echo "  2. Deploy: bin/deploy"

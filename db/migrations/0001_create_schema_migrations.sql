@@ -1,0 +1,4 @@
+-- Schema migrations table is created by bin/migrate before migrations run.
+-- This file exists as documentation of the schema:
+--   schema_migrations (last_migration INTEGER NOT NULL)
+-- It tracks the highest migration number that has been applied.

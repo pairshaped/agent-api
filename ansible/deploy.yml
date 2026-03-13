@@ -1,0 +1,36 @@
+---
+# Deploy latest code to server.
+# Usage: ansible-playbook ansible/deploy.yml -i ansible/inventory.ini
+
+- name: Deploy Todo List MCP Server
+  hosts: servers
+  vars_files:
+    - vars.yml
+
+  tasks:
+    - name: Pull latest code
+      ansible.builtin.git:
+        repo: "{{ repo_url }}"
+        dest: "{{ app_dir }}"
+        version: main
+        accept_hostkey: true
+
+    - name: Build
+      ansible.builtin.command:
+        cmd: gleam build
+        chdir: "{{ app_dir }}"
+      register: build_result
+      changed_when: "'Compiled' in build_result.stderr"
+
+    - name: Run migrations
+      ansible.builtin.command:
+        cmd: bin/migrate
+        chdir: "{{ app_dir }}"
+      register: migrate_result
+      changed_when: "'Running migration' in migrate_result.stdout"
+
+    - name: Restart gleam-mcp-todo
+      ansible.builtin.systemd:
+        name: gleam-mcp-todo
+        state: restarted
+      become: true

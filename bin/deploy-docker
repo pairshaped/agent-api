@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Deploy to production server using Docker.
+# Pulls latest code, rebuilds containers, and restarts.
+# Configure DEPLOY_HOST and DEPLOY_USER in .env
+
+[ -f .env ] || { echo "Missing .env — copy .env.example and configure it"; exit 1; }
+source .env
+
+SERVER="${DEPLOY_USER}@${DEPLOY_HOST}"
+APP_DIR="/home/${DEPLOY_USER}/gleam-mcp-todo"
+
+echo "=== Pulling latest code ==="
+ssh -A "$SERVER" "cd $APP_DIR && git pull"
+
+echo ""
+echo "=== Building and restarting ==="
+ssh "$SERVER" "cd $APP_DIR && docker compose up -d --build"
+
+echo ""
+echo "=== Status ==="
+ssh "$SERVER" "cd $APP_DIR && docker compose ps"
+
+echo ""
+echo "Deployed to https://${DEPLOY_HOST}"

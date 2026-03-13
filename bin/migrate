@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+set -e
+
+DIR="$(cd "$(dirname "$0")/.." && pwd)"
+DB_PATH="${DB_PATH:-db/gleam_mcp_todo.db}"
+MIGRATIONS_DIR="$DIR/db/migrations"
+
+echo "Running migrations: $DB_PATH"
+
+# Ensure db directory exists
+mkdir -p "$DIR/db"
+
+# Ensure schema_migrations table exists
+sqlite3 "$DB_PATH" "CREATE TABLE IF NOT EXISTS schema_migrations (last_migration INTEGER NOT NULL);"
+
+# Initialize if empty
+ROW_COUNT=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM schema_migrations;")
+if [ "$ROW_COUNT" = "0" ]; then
+  sqlite3 "$DB_PATH" "INSERT INTO schema_migrations (last_migration) VALUES (0);"
+fi
+
+# Get current migration number
+last=$(sqlite3 "$DB_PATH" "SELECT last_migration FROM schema_migrations LIMIT 1;")
+echo "Current migration: $last"
+
+# Find and run pending migrations
+found_migrations=false
+for file in "$MIGRATIONS_DIR"/*.sql; do
+  [ -f "$file" ] || continue
+  num=$(basename "$file" | grep -o '^[0-9]\+' | head -1)
+  [ "$num" -le "$last" ] && continue
+
+  found_migrations=true
+  echo "Running migration $num: $(basename "$file")"
+
+  sqlite3 "$DB_PATH" < "$file" || {
+    echo "Migration $num failed!"
+    exit 1
+  }
+
+  sqlite3 "$DB_PATH" "UPDATE schema_migrations SET last_migration = $num;" || {
+    echo "Failed to update migration version!"
+    exit 1
+  }
+
+  echo "Migration $num completed successfully"
+done
+
+if [ "$found_migrations" = false ]; then
+  echo "No pending migrations found"
+else
+  echo "All migrations completed successfully"
+fi

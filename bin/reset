@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -e
+
+DIR="$(cd "$(dirname "$0")/.." && pwd)"
+DB_PATH="$DIR/db/gleam_mcp_todo.db"
+
+echo "=== Resetting database ==="
+
+# Delete database files
+for ext in "" "-shm" "-wal"; do
+  if [ -f "${DB_PATH}${ext}" ]; then
+    rm "${DB_PATH}${ext}"
+    echo "Deleted ${DB_PATH}${ext}"
+  fi
+done
+
+# Run migrations
+"$DIR/bin/migrate"
+
+# Restart server if running
+if lsof -ti:8080 > /dev/null 2>&1; then
+  echo ""
+  echo "=== Restarting server ==="
+  "$DIR/bin/server"
+fi

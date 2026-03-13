@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "server",
+  "dolt_database": "gleam_mcp_todo",
+  "project_id": "2736656c-9922-42dc-a551-4ccf05a59dd0"
+}

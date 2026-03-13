@@ -1,0 +1,35 @@
+name: gleam-mcp-todo
+services:
+  web:
+    image: gleam-mcp-todo-web:latest
+    build: .
+    expose:
+      - "8080"
+    restart: always
+    environment:
+      - SESSION_SECRET=${SESSION_SECRET}
+      - PORT=8080
+      - BIND=0.0.0.0
+      - DB_PATH=/data/gleam_mcp_todo.db
+    volumes:
+      - app_data:/data
+  caddy:
+    image: caddy:2
+    restart: always
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    environment:
+      - DOMAIN=${DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+volumes:
+  app_data:
+  caddy_data:
+  caddy_config:

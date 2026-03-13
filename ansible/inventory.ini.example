@@ -1,0 +1,2 @@
+[servers]
+# dev ansible_host=your-server-ip ansible_user=deploy ansible_ssh_common_args='-o ForwardAgent=yes'

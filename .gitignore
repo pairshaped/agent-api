@@ -1,0 +1,45 @@
+# Environment files
+.env
+
+# Ansible config (use .example files as templates)
+ansible/inventory.ini
+ansible/vars.yml
+
+# Claude instructions
+CLAUDE.md
+
+# Plans
+docs/plans/
+
+# SQLite databases
+*.db
+*.db-shm
+*.db-wal
+db/*.db
+db/*.db-shm
+db/*.db-wal
+
+# Gleam
+build/
+.gleam/
+
+# Erlang
+erl_crash.dump
+*.beam
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Dolt database files (added by bd init)
+.dolt/

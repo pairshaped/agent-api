@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -e
+
+DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$DIR"
+
+# Format
+gleam format src test
+
+# Generate Parrot SQL
+gleam run -m parrot -- --sqlite "db/gleam_mcp_todo.db"
+
+# Build
+gleam build
+
+# Lint
+bin/lint
+
+# Restart dev server
+bin/server
