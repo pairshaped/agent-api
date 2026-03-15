@@ -63,8 +63,10 @@ pub fn handle_request(req req: Request, context context: Context) -> Response {
 
 fn handle_root_get(request request: Request) -> Response {
   let accept =
-    get_header_option(request: request, name: "accept") |> option.unwrap("")
-  // lint:allow missing header defaults to empty
+    case get_header_option(request: request, name: "accept") {
+      Some(value) -> value
+      None -> ""
+    }
   case string.contains(accept, "text/event-stream") {
     True -> wisp.response(405)
     False -> {

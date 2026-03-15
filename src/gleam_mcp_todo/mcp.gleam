@@ -38,19 +38,13 @@ pub fn parse_message(body: dynamic.Dynamic) -> Result(McpMessage, McpError) {
 
   case decode.run(body, decoder) {
     Error(_) -> Error(InvalidRequest)
-    Ok(#(jsonrpc, method, id, params)) -> {
-      case jsonrpc {
-        "2.0" ->
-          case id {
-            Some(raw_id) -> {
-              let json_id = dynamic_to_json(raw_id)
-              Ok(McpRequest(id: json_id, method: method, params: params))
-            }
-            None -> Ok(McpNotification(method: method, params: params))
-          }
-        _ -> Error(InvalidRequest)
-      }
+    Ok(#(jsonrpc, _, _, _)) if jsonrpc != "2.0" -> Error(InvalidRequest)
+    Ok(#(_, method, Some(raw_id), params)) -> {
+      let json_id = dynamic_to_json(raw_id)
+      Ok(McpRequest(id: json_id, method: method, params: params))
     }
+    Ok(#(_, method, None, params)) ->
+      Ok(McpNotification(method: method, params: params))
   }
 }
 

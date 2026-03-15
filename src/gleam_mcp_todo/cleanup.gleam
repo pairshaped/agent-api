@@ -46,15 +46,15 @@ pub fn start(
   |> result.map(fn(_) { Nil })
 }
 
-fn handle_message(state: State, message: Message) -> actor.Next(State, Message) {
-  case message {
-    Tick -> {
-      run_cleanup(state.conn)
-      rate_limiter.cleanup(limiter: state.rate_limiter, now: time.now_unix())
-      process.send_after(state.self, check_interval, Tick)
-      actor.continue(state)
-    }
-  }
+fn handle_message(
+  state state: State,
+  message message: Message,
+) -> actor.Next(State, Message) {
+  let Tick = message
+  run_cleanup(state.conn)
+  rate_limiter.cleanup(limiter: state.rate_limiter, now: time.now_unix())
+  process.send_after(state.self, check_interval, Tick)
+  actor.continue(state)
 }
 
 fn run_cleanup(conn: sqlight.Connection) -> Nil {

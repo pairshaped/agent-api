@@ -22,3 +22,20 @@ glimit = { path = "lib/glimit" }
 
 [dev-dependencies]
 unitest = ">= 1.5.0 and < 2.0.0"
+glinter = ">= 2.7.0 and < 3.0.0"
+
+[tools.glinter]
+stats = true
+include = ["src/", "test/"]
+exclude = ["src/gleam_mcp_todo/sql.gleam"]
+
+[tools.glinter.rules]
+unused_exports = "off"
+
+[tools.glinter.ignore]
+# Startup code: intentional crash-on-missing-config
+"src/gleam_mcp_todo.gleam" = ["unwrap_used", "assert_ok_pattern"]
+# DB setup: panics are correct for SQLite pragma enforcement
+"src/gleam_mcp_todo/db.gleam" = ["avoid_panic", "assert_ok_pattern"]
+# Tests: relaxed rules
+"test/**/*.gleam" = ["avoid_panic", "assert_ok_pattern", "short_variable_name", "missing_type_annotation", "label_possible", "missing_labels", "unwrap_used", "unqualified_import", "discarded_result"]

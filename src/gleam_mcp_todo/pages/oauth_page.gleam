@@ -1,6 +1,5 @@
 import gleam/int
 import gleam/list
-import gleam/result
 import gleam/string
 import gleam/uri
 
@@ -147,57 +146,63 @@ fn handle_email_step(
   params params: OAuthParams,
   context context: Context,
 ) -> Response {
-  case string.trim(email) {
+  let email = string.trim(email)
+  case email {
     "" -> {
       let html =
         render_login_form(params: params, email: "", error: "Email is required")
       wisp.html_response(html, 400)
     }
-    email -> {
-      let now = time.now_unix()
-      case
-        rate_limiter.check_magic_link_request(
-          limiter: context.rate_limiter,
+    _ -> handle_email_login(email: email, params: params, context: context)
+  }
+}
+
+fn handle_email_login(
+  email email: String,
+  params params: OAuthParams,
+  context context: Context,
+) -> Response {
+  let now = time.now_unix()
+  case
+    rate_limiter.check_magic_link_request(
+      limiter: context.rate_limiter,
+      email: email,
+      now: now,
+    )
+  {
+    Error(retry_after) -> {
+      let html =
+        render_login_form(
+          params: params,
           email: email,
-          now: now,
+          error: "Too many requests. Please try again in "
+            <> int.to_string(retry_after)
+            <> " seconds.",
         )
-      {
-        Error(retry_after) -> {
+      wisp.html_response(html, 429)
+    }
+    Ok(Nil) ->
+      case auth.request_login(conn: context.db, email: email, now: now) {
+        Ok(login_request) -> {
+          let html =
+            render_verify_form(
+              params: params,
+              email: email,
+              verification_code: login_request.token,
+              error: "",
+            )
+          wisp.html_response(html, 200)
+        }
+        Error(_) -> {
           let html =
             render_login_form(
               params: params,
               email: email,
-              error: "Too many requests. Please try again in "
-                <> int.to_string(retry_after)
-                <> " seconds.",
+              error: "Failed to send verification code",
             )
-          wisp.html_response(html, 429)
+          wisp.html_response(html, 500)
         }
-        Ok(Nil) ->
-          case auth.request_login(conn: context.db, email: email, now: now) {
-            Ok(login_request) -> {
-              // Show verification form with code displayed (demo mode)
-              let html =
-                render_verify_form(
-                  params: params,
-                  email: email,
-                  verification_code: login_request.token,
-                  error: "",
-                )
-              wisp.html_response(html, 200)
-            }
-            Error(_) -> {
-              let html =
-                render_login_form(
-                  params: params,
-                  email: email,
-                  error: "Failed to send verification code",
-                )
-              wisp.html_response(html, 500)
-            }
-          }
       }
-    }
   }
 }
 
@@ -228,74 +233,95 @@ fn handle_verify_step(
       wisp.html_response(html, 429)
     }
     Ok(Nil) ->
-      case
-        auth.verify_login(conn: context.db, email: email, token: code, now: now)
-      {
-        Ok(user) -> {
-          // Generate authorization code
-          case
-            oauth.create_authorization_code(
-              context: context,
-              client_id: params.client_id,
-              user_id: user.id,
-              redirect_uri: params.redirect_uri,
-              code_challenge: params.code_challenge,
-              resource: params.resource,
-              scope: "",
-            )
-          {
-            Ok(auth_code) -> {
-              // Redirect back to client
-              let redirect_url =
-                params.redirect_uri
-                <> "?code="
-                <> uri.percent_encode(auth_code)
-                <> "&state="
-                <> uri.percent_encode(params.state)
-              wisp.redirect(redirect_url)
-            }
-            Error(_) -> {
-              let html =
-                layout.wrap(title: "Error", content: [
-                  html.h1([], [element.text("Error")]),
-                  html.p([], [
-                    element.text("Failed to generate authorization code."),
-                  ]),
-                ])
-              wisp.html_response(html, 500)
-            }
-          }
-        }
-        Error(auth.InvalidToken) | Error(auth.SupersededToken) -> {
-          let html =
-            render_verify_form(
-              params: params,
-              email: email,
-              verification_code: "",
-              error: "Invalid verification code. Please try again.",
-            )
-          wisp.html_response(html, 400)
-        }
-        Error(auth.ExpiredToken) -> {
-          let html =
-            render_verify_form(
-              params: params,
-              email: email,
-              verification_code: "",
-              error: "Verification code expired. Please request a new one.",
-            )
-          wisp.html_response(html, 400)
-        }
-        Error(_) -> {
-          let html =
-            render_login_form(
-              params: params,
-              email: email,
-              error: "Authentication failed",
-            )
-          wisp.html_response(html, 500)
-        }
-      }
+      handle_verification(
+        email: email,
+        code: code,
+        params: params,
+        context: context,
+        now: now,
+      )
+  }
+}
+
+fn handle_verification(
+  email email: String,
+  code code: String,
+  params params: OAuthParams,
+  context context: Context,
+  now now: Int,
+) -> Response {
+  case
+    auth.verify_login(conn: context.db, email: email, token: code, now: now)
+  {
+    Ok(user) ->
+      handle_verified_user(user_id: user.id, params: params, context: context)
+    Error(auth.InvalidToken) | Error(auth.SupersededToken) -> {
+      let html =
+        render_verify_form(
+          params: params,
+          email: email,
+          verification_code: "",
+          error: "Invalid verification code. Please try again.",
+        )
+      wisp.html_response(html, 400)
+    }
+    Error(auth.ExpiredToken) -> {
+      let html =
+        render_verify_form(
+          params: params,
+          email: email,
+          verification_code: "",
+          error: "Verification code expired. Please request a new one.",
+        )
+      wisp.html_response(html, 400)
+    }
+    Error(_) -> {
+      let html =
+        render_login_form(
+          params: params,
+          email: email,
+          error: "Authentication failed",
+        )
+      wisp.html_response(html, 500)
+    }
+  }
+}
+
+fn handle_verified_user(
+  user_id user_id: Int,
+  params params: OAuthParams,
+  context context: Context,
+) -> Response {
+  case
+    oauth.create_authorization_code(
+      context: context,
+      client_id: params.client_id,
+      user_id: user_id,
+      redirect_uri: params.redirect_uri,
+      code_challenge: params.code_challenge,
+      resource: params.resource,
+      scope: "",
+    )
+  {
+    Ok(auth_code) -> {
+      let redirect_url =
+        params.redirect_uri
+        <> "?code="
+        <> uri.percent_encode(auth_code)
+        <> "&state="
+        <> uri.percent_encode(params.state)
+      wisp.redirect(redirect_url)
+    }
+    Error(_) -> {
+      let html =
+        layout.wrap(title: "Error", content: [
+          html.h1([], [element.text("Error")]),
+          html.p([], [
+            element.text("Failed to generate authorization code."),
+          ]),
+        ])
+      wisp.html_response(html, 500)
+    }
   }
 }
 
@@ -430,6 +456,8 @@ fn find_param(
   params params: List(#(String, String)),
   name name: String,
 ) -> String {
-  list.key_find(params, name) |> result.unwrap("")
-  // lint:allow missing form param defaults to empty
+  case list.key_find(params, name) {
+    Ok(value) -> value
+    Error(_) -> ""
+  }
 }

@@ -199,42 +199,55 @@ fn handle_tools_call(
         )
       mcp.json_response(body: body, status: 400)
     }
-    Some(params_value) -> {
-      let decoder = {
-        use name <- decode.field("name", decode.string)
-        use arguments <- decode.optional_field(
-          "arguments",
-          None,
-          decode.dynamic |> decode.map(Some),
+    Some(params_value) ->
+      parse_and_call_tool(
+        id: id,
+        params_value: params_value,
+        db: db,
+        user_id: user_id,
+      )
+  }
+}
+
+fn parse_and_call_tool(
+  id id: json.Json,
+  params_value params_value: dynamic.Dynamic,
+  db db: sqlight.Connection,
+  user_id user_id: Int,
+) -> Response {
+  let decoder = {
+    use name <- decode.field("name", decode.string)
+    use arguments <- decode.optional_field(
+      "arguments",
+      None,
+      decode.dynamic |> decode.map(Some),
+    )
+    decode.success(#(name, arguments))
+  }
+  case decode.run(params_value, decoder) {
+    Error(_) -> {
+      let body =
+        mcp.error_response(
+          Some(id),
+          mcp.InvalidParams,
+          "Invalid params: expected {name, arguments}",
         )
-        decode.success(#(name, arguments))
+      mcp.json_response(body: body, status: 400)
+    }
+    Ok(#(name, arguments)) -> {
+      let args = case arguments {
+        Some(a) -> a
+        None -> dynamic.nil()
       }
-      case decode.run(params_value, decoder) {
-        Error(_) -> {
-          let body =
-            mcp.error_response(
-              Some(id),
-              mcp.InvalidParams,
-              "Invalid params: expected {name, arguments}",
-            )
-          mcp.json_response(body: body, status: 400)
-        }
-        Ok(#(name, arguments)) -> {
-          // Default to nil Dynamic when no arguments provided (tools like
-          // list_todos don't require arguments)
-          let args = option.unwrap(arguments, dynamic.nil())
-          // lint:allow tools like list_todos have no arguments
-          let result =
-            mcp_tools.call_tool(
-              name: name,
-              arguments: args,
-              db: db,
-              user_id: user_id,
-            )
-          let body = mcp.success_response(id, result)
-          mcp.json_response(body: body, status: 200)
-        }
-      }
+      let result =
+        mcp_tools.call_tool(
+          name: name,
+          arguments: args,
+          db: db,
+          user_id: user_id,
+        )
+      let body = mcp.success_response(id, result)
+      mcp.json_response(body: body, status: 200)
     }
   }
 }

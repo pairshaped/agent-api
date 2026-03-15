@@ -404,16 +404,15 @@ pub fn handle_revoke(
     Ok(token) -> {
       let token_hash = auth.hash_refresh_token(token: token)
       let now = time.now_unix()
-      let _ =
-        // lint:allow RFC 7009 requires 200 regardless
-        db.exec(
-          conn: context.db,
-          query: sql.revoke_refresh_token(
-            revoked_at: Some(now),
-            token_hash: token_hash,
-          ),
-        )
-      // Always return 200 per RFC 7009
+      // RFC 7009 requires 200 regardless of whether revocation succeeded
+      db.exec_or_log(
+        conn: context.db,
+        query: sql.revoke_refresh_token(
+          revoked_at: Some(now),
+          token_hash: token_hash,
+        ),
+        label: "Token revocation failed",
+      )
       wisp.response(200)
     }
   }
