@@ -69,6 +69,10 @@ pub fn render(url: String) -> String {
         ),
       ]),
     ]),
+    html.h3([attribute.class("mt-4")], [element.text("Codex CLI")]),
+    html.div([attribute.class("code-block mt-2")], [
+      element.text("codex mcp add --transport http gleam-mcp-todo " <> url),
+    ]),
     html.hr([attribute.class("mt-4")]),
     html.p([attribute.class("text-muted mt-3")], [
       element.text(
