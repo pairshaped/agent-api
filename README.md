@@ -2,6 +2,8 @@
 
 A minimal MCP (Model Context Protocol) server with OAuth 2.1, built in Gleam on the BEAM.
 
+![Todo app in Claude.ai](priv/static/todo-app-in-claude-ai.png)
+
 ## What This Is
 
 An MCP remote server that AI clients (Claude Desktop, Cursor, Claude Code) can connect to via a single URL. It implements:
@@ -115,20 +117,11 @@ bin/server
 
 ## Connect an MCP Client
 
+**Claude.ai (Web):** Settings → Connectors → Add custom connector → paste your server URL → click Add. Then in a conversation, click **+** (lower left) → **Connectors** to enable it. Requires Pro, Max, Team, or Enterprise plan (beta).
+
 **Claude Code:**
 ```bash
 claude mcp add --transport http gleam-mcp-todo http://localhost:8080
-```
-
-**Claude Desktop / Cursor:**
-```json
-{
-  "mcpServers": {
-    "gleam-mcp-todo": {
-      "url": "http://localhost:8080"
-    }
-  }
-}
 ```
 
 Replace `http://localhost:8080` with your deployed URL if running remotely.
