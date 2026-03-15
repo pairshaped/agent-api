@@ -44,6 +44,17 @@ pub fn wrap(title title: String, content content: List(Element(Nil))) -> String 
     ]),
     html.body([], [
       html.div([attribute.class("container py-4")], content),
+      html.footer([attribute.class("container py-3 text-center text-muted")], [
+        html.a(
+          [
+            attribute.href(
+              "https://github.com/pairshaped/gleam-mcp-todo",
+            ),
+            attribute.target("_blank"),
+          ],
+          [element.text("GitHub")],
+        ),
+      ]),
     ]),
   ])
   |> element.to_document_string
