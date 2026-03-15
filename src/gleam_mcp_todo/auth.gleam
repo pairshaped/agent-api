@@ -47,7 +47,7 @@ pub fn create_access_token(
   now now: Int,
 ) -> String {
   let expires_at = now + access_token_ttl
-  let resource_hash = hash_short(resource)
+  let resource_hash = hash_short(normalize_resource(resource))
   create_hmac_token(secret: session_secret, prefix: "access", fields: [
     int.to_string(user_id),
     resource_hash,
@@ -76,7 +76,7 @@ pub fn validate_access_token(
         int.parse(expires_at_str) |> result.replace_error(InvalidToken),
       )
       use <- bool.guard(when: expires_at <= now, return: Error(ExpiredToken))
-      let expected_resource_hash = hash_short(resource)
+      let expected_resource_hash = hash_short(normalize_resource(resource))
       use <- bool.guard(
         when: resource_hash != expected_resource_hash,
         return: Error(InvalidToken),
@@ -85,6 +85,14 @@ pub fn validate_access_token(
     }
     _ -> Error(InvalidToken)
   }
+}
+
+pub fn normalize_resource(resource: String) -> String {
+  use <- bool.guard(
+    when: string.ends_with(resource, "/"),
+    return: string.drop_end(resource, 1),
+  )
+  resource
 }
 
 fn hash_short(value: String) -> String {

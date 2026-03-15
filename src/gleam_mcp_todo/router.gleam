@@ -102,15 +102,7 @@ fn handle_mcp_post(
             context: context,
             user_id: user_id,
           )
-        Error(err) -> {
-          wisp.log_error(
-            "Access token validation failed for resource: '"
-            <> resource
-            <> "' error: "
-            <> string.inspect(err),
-          )
-          unauthorized_response(resource: resource)
-        }
+        Error(_) -> unauthorized_response(resource: resource)
       }
     }
     Some(sid) -> {

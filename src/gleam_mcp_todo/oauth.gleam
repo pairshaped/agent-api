@@ -249,17 +249,9 @@ fn exchange_authorization_code(
         return: mcp.json_error(status: 400, message: "Invalid code_verifier"),
       )
       use <- bool.guard(
-        when: resource != auth_code.resource,
-        return: {
-          wisp.log_error(
-            "Resource mismatch: client sent '"
-            <> resource
-            <> "' but auth code has '"
-            <> auth_code.resource
-            <> "'",
-          )
-          mcp.json_error(status: 400, message: "Resource mismatch")
-        },
+        when: auth.normalize_resource(resource)
+          != auth.normalize_resource(auth_code.resource),
+        return: mcp.json_error(status: 400, message: "Resource mismatch"),
       )
       issue_tokens(
         context: context,
