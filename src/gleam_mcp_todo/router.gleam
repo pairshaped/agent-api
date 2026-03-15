@@ -4,8 +4,6 @@ import gleam/list
 import gleam/option.{None, Some}
 import gleam/string
 
-import logging
-
 import gleam_mcp_todo/auth
 import gleam_mcp_todo/context.{type Context}
 import gleam_mcp_todo/mcp
@@ -105,12 +103,11 @@ fn handle_mcp_post(
             user_id: user_id,
           )
         Error(err) -> {
-          logging.log(
-            logging.Error,
+          wisp.log_error(
             "Access token validation failed for resource: '"
-              <> resource
-              <> "' error: "
-              <> string.inspect(err),
+            <> resource
+            <> "' error: "
+            <> string.inspect(err),
           )
           unauthorized_response(resource: resource)
         }
