@@ -8,6 +8,8 @@ import gleam/option.{None, Some}
 import gleam/result
 import gleam/string
 
+import logging
+
 import gleam_mcp_todo/auth
 import gleam_mcp_todo/context.{type Context}
 import gleam_mcp_todo/db
@@ -250,7 +252,17 @@ fn exchange_authorization_code(
       )
       use <- bool.guard(
         when: resource != auth_code.resource,
-        return: mcp.json_error(status: 400, message: "Resource mismatch"),
+        return: {
+          logging.log(
+            logging.Error,
+            "Resource mismatch: client sent '"
+              <> resource
+              <> "' but auth code has '"
+              <> auth_code.resource
+              <> "'",
+          )
+          mcp.json_error(status: 400, message: "Resource mismatch")
+        },
       )
       issue_tokens(
         context: context,
