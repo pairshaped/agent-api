@@ -45,6 +45,30 @@ pub fn render(url: String) -> String {
     html.div([attribute.class("code-block mt-2")], [
       element.text(claude_code_cmd),
     ]),
+    html.h3([attribute.class("mt-4")], [element.text("ChatGPT")]),
+    html.p([attribute.class("text-muted mb-1")], [
+      element.text("Available on all plans. Requires developer mode."),
+    ]),
+    html.ol([], [
+      html.li([], [
+        element.text(
+          "Go to Settings \u{2192} Apps & Connectors \u{2192} Advanced settings \u{2192} enable developer mode",
+        ),
+      ]),
+      html.li([], [
+        element.text(
+          "Click Create, enter a name, and paste the server URL:",
+        ),
+      ]),
+    ]),
+    html.div([attribute.class("code-block mt-2")], [element.text(url)]),
+    html.ol([attribute.attribute("start", "3")], [
+      html.li([], [
+        element.text(
+          "In a conversation, click + \u{2192} More \u{2192} select the app",
+        ),
+      ]),
+    ]),
     html.hr([attribute.class("mt-4")]),
     html.p([attribute.class("text-muted mt-3")], [
       element.text(
