@@ -1,6 +1,7 @@
 ---
-# Deploy latest code to server.
+# Deploy latest code using release directories.
 # Usage: ansible-playbook ansible/deploy.yml -i ansible/inventory.ini
+# Deploy a specific ref: ansible-playbook ansible/deploy.yml -i ansible/inventory.ini -e deploy_ref=v1.2.0
 
 - name: Deploy Todo List MCP Server
   hosts: servers
@@ -8,29 +9,84 @@
     - vars.yml
 
   tasks:
-    - name: Pull latest code
+    - name: Generate release timestamp
+      ansible.builtin.set_fact:
+        release_name: "{{ lookup('pipe', 'date +%Y%m%d_%H%M%S') }}"
+
+    - name: Set release directory
+      ansible.builtin.set_fact:
+        release_dir: "{{ releases_dir }}/{{ release_name }}"
+
+    - name: Show deploy target
+      ansible.builtin.debug:
+        msg: "Deploying {{ deploy_ref }} to {{ release_dir }}"
+
+    - name: Verify shared .env exists
+      ansible.builtin.stat:
+        path: "{{ shared_dir }}/.env"
+      register: shared_env
+
+    - name: Fail if shared .env missing
+      ansible.builtin.fail:
+        msg: "{{ shared_dir }}/.env not found. Run setup.yml first."
+      when: not shared_env.stat.exists
+
+    - name: Clone repo into release directory
       ansible.builtin.git:
         repo: "{{ repo_url }}"
-        dest: "{{ app_dir }}"
-        version: main
+        dest: "{{ release_dir }}"
+        version: "{{ deploy_ref }}"
         accept_hostkey: true
+
+    - name: Symlink shared .env into release
+      ansible.builtin.file:
+        src: "{{ shared_dir }}/.env"
+        dest: "{{ release_dir }}/.env"
+        state: link
+        force: true
+
+    - name: Symlink shared db into release
+      ansible.builtin.file:
+        src: "{{ shared_dir }}/db"
+        dest: "{{ release_dir }}/db"
+        state: link
+        force: true
 
     - name: Build
       ansible.builtin.command:
         cmd: gleam build
-        chdir: "{{ app_dir }}"
+        chdir: "{{ release_dir }}"
       register: build_result
       changed_when: "'Compiled' in build_result.stderr"
 
     - name: Run migrations
       ansible.builtin.command:
         cmd: bin/migrate
-        chdir: "{{ app_dir }}"
+        chdir: "{{ release_dir }}"
       register: migrate_result
       changed_when: "'Running migration' in migrate_result.stdout"
+
+    - name: Atomic symlink swap
+      ansible.builtin.shell: |
+        ln -s {{ release_dir }} {{ current_link }}_tmp && mv -T {{ current_link }}_tmp {{ current_link }}
+      args:
+        chdir: "{{ base_dir }}"
 
     - name: Restart gleam-mcp-todo
       ansible.builtin.systemd:
         name: gleam-mcp-todo
         state: restarted
       become: true
+
+    - name: Find old releases to clean up
+      ansible.builtin.shell: |
+        ls -1d {{ releases_dir }}/*/ | sort | head -n -{{ keep_releases }} | grep -v "$(readlink -f {{ current_link }})" || true
+      register: old_releases
+      changed_when: false
+
+    - name: Remove old releases
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop: "{{ old_releases.stdout_lines }}"
+      when: old_releases.stdout_lines | length > 0

@@ -1,0 +1,58 @@
+---
+# Roll back to the previous release.
+# Usage: ansible-playbook ansible/rollback.yml -i ansible/inventory.ini
+
+- name: Rollback Todo List MCP Server
+  hosts: servers
+  vars_files:
+    - vars.yml
+
+  tasks:
+    - name: Get current release target
+      ansible.builtin.command: readlink -f {{ current_link }}
+      register: current_target
+      changed_when: false
+
+    - name: List all releases
+      ansible.builtin.shell: ls -1d {{ releases_dir }}/*/ | sort
+      register: all_releases
+      changed_when: false
+
+    - name: Determine previous release
+      ansible.builtin.set_fact:
+        previous_release: >-
+          {{ all_releases.stdout_lines
+             | reject('search', current_target.stdout | basename)
+             | list
+             | last }}
+
+    - name: Fail if no previous release
+      ansible.builtin.fail:
+        msg: "No previous release to roll back to. Only one release exists."
+      when: previous_release is not defined or previous_release == ""
+
+    - name: Validate previous release has build directory
+      ansible.builtin.stat:
+        path: "{{ previous_release }}/build"
+      register: build_dir
+
+    - name: Fail if previous release has no build
+      ansible.builtin.fail:
+        msg: "Previous release {{ previous_release }} has no build/ directory. Cannot roll back."
+      when: not build_dir.stat.exists
+
+    - name: Atomic symlink swap to previous release
+      ansible.builtin.shell: |
+        ln -s {{ previous_release }} {{ current_link }}_tmp && mv -T {{ current_link }}_tmp {{ current_link }}
+      args:
+        chdir: "{{ base_dir }}"
+
+    - name: Restart gleam-mcp-todo
+      ansible.builtin.systemd:
+        name: gleam-mcp-todo
+        state: restarted
+      become: true
+
+    - name: Show rollback result
+      ansible.builtin.debug:
+        msg: "Rolled back from {{ current_target.stdout | basename }} to {{ previous_release | basename }}"
