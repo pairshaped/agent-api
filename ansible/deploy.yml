@@ -31,44 +31,77 @@
         msg: "{{ shared_dir }}/.env not found. Run setup.yml first."
       when: not shared_env.stat.exists
 
-    - name: Clone repo into release directory
+    - name: Update persistent repo
       ansible.builtin.git:
         repo: "{{ repo_url }}"
-        dest: "{{ release_dir }}"
+        dest: "{{ repo_dir }}"
         version: "{{ deploy_ref }}"
         accept_hostkey: true
+
+    - name: Create release directory
+      ansible.builtin.file:
+        path: "{{ release_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Export repo into release directory
+      ansible.builtin.shell: |
+        git -C "{{ repo_dir }}" archive HEAD | tar -x -C "{{ release_dir }}"
+
+    - name: Remove cloned .env from release
+      ansible.builtin.file:
+        path: "{{ release_dir }}/.env"
+        state: absent
+
+    - name: Remove cloned database from release
+      ansible.builtin.file:
+        path: "{{ release_dir }}/db/gleam_mcp_todo.db"
+        state: absent
 
     - name: Symlink shared .env into release
       ansible.builtin.file:
         src: "{{ shared_dir }}/.env"
         dest: "{{ release_dir }}/.env"
         state: link
-        force: true
 
     - name: Symlink shared database into release
       ansible.builtin.file:
         src: "{{ shared_dir }}/db/gleam_mcp_todo.db"
         dest: "{{ release_dir }}/db/gleam_mcp_todo.db"
         state: link
-        force: true
 
-    - name: Build
-      ansible.builtin.command:
-        cmd: gleam build
-        chdir: "{{ release_dir }}"
-      register: build_result
-      changed_when: "'Compiled' in build_result.stderr"
+    - block:
+        - name: Build
+          ansible.builtin.command:
+            cmd: gleam build
+            chdir: "{{ release_dir }}"
+          register: build_result
+          changed_when: "'Compiled' in build_result.stderr"
 
-    - name: Run migrations
-      ansible.builtin.command:
-        cmd: bin/migrate
-        chdir: "{{ release_dir }}"
-      register: migrate_result
-      changed_when: "'Running migration' in migrate_result.stdout"
+        - name: Run migrations
+          ansible.builtin.command:
+            cmd: bin/migrate
+            chdir: "{{ release_dir }}"
+          register: migrate_result
+          changed_when: "'Running migration' in migrate_result.stdout"
+
+      rescue:
+        - name: Show deploy error
+          ansible.builtin.debug:
+            msg: "{{ ansible_failed_result }}"
+
+        - name: Remove failed release
+          ansible.builtin.file:
+            path: "{{ release_dir }}"
+            state: absent
+
+        - name: Fail with message
+          ansible.builtin.fail:
+            msg: "Deploy failed. Release {{ release_name }} removed. Current release unchanged."
 
     - name: Atomic symlink swap
       ansible.builtin.shell: |
-        ln -s {{ release_dir }} {{ current_link }}_tmp && mv -T {{ current_link }}_tmp {{ current_link }}
+        ln -s "{{ release_dir }}" "{{ current_link }}_tmp" && mv -T "{{ current_link }}_tmp" "{{ current_link }}"
       args:
         chdir: "{{ base_dir }}"
 

@@ -3,6 +3,7 @@ base_dir: /home/deploy/gleam-mcp-todo
 releases_dir: /home/deploy/gleam-mcp-todo/releases
 shared_dir: /home/deploy/gleam-mcp-todo/shared
 current_link: /home/deploy/gleam-mcp-todo/current
+repo_dir: /home/deploy/gleam-mcp-todo/repo
 repo_url: git@github.com:your-org/gleam-mcp-todo.git
 domain: your-server.example.com
 gleam_version: "1.14.0"
