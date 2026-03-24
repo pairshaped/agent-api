@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Roll back to the previous release.
+ansible-playbook ansible/rollback.yml -i ansible/inventory.ini

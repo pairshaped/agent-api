@@ -2,4 +2,12 @@
 set -euo pipefail
 
 # Deploy to production server via Ansible.
-ansible-playbook ansible/deploy.yml -i ansible/inventory.ini
+# Usage: bin/deploy          (deploys main)
+#        bin/deploy v1.2.0   (deploys a specific tag)
+#        bin/deploy abc123   (deploys a specific commit)
+
+if [ "${1:-}" != "" ]; then
+  ansible-playbook ansible/deploy.yml -i ansible/inventory.ini -e "deploy_ref=$1"
+else
+  ansible-playbook ansible/deploy.yml -i ansible/inventory.ini
+fi
