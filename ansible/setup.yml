@@ -258,10 +258,10 @@
         force: true
       become: false
 
-    - name: Symlink shared db into initial release
+    - name: Symlink shared database into initial release
       ansible.builtin.file:
-        src: "{{ shared_dir }}/db"
-        dest: "{{ releases_dir }}/{{ initial_release }}/db"
+        src: "{{ shared_dir }}/db/gleam_mcp_todo.db"
+        dest: "{{ releases_dir }}/{{ initial_release }}/db/gleam_mcp_todo.db"
         state: link
         force: true
       become: false

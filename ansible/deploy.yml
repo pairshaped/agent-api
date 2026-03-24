@@ -45,10 +45,10 @@
         state: link
         force: true
 
-    - name: Symlink shared db into release
+    - name: Symlink shared database into release
       ansible.builtin.file:
-        src: "{{ shared_dir }}/db"
-        dest: "{{ release_dir }}/db"
+        src: "{{ shared_dir }}/db/gleam_mcp_todo.db"
+        dest: "{{ release_dir }}/db/gleam_mcp_todo.db"
         state: link
         force: true
 
