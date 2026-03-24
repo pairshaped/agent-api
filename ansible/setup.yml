@@ -252,23 +252,16 @@
         dest: "{{ repo_dir }}"
         version: "{{ deploy_ref }}"
         accept_hostkey: true
+        recursive: true
       become: false
 
     - name: Generate initial release timestamp
       ansible.builtin.set_fact:
         initial_release: "{{ lookup('pipe', 'date +%Y%m%d_%H%M%S') }}"
 
-    - name: Create initial release directory
-      ansible.builtin.file:
-        path: "{{ releases_dir }}/{{ initial_release }}"
-        state: directory
-        owner: "{{ deploy_user }}"
-        group: "{{ deploy_user }}"
-        mode: "0755"
-
-    - name: Export repo into initial release
+    - name: Copy repo into initial release
       ansible.builtin.shell: |
-        git -C "{{ repo_dir }}" archive HEAD | tar -x -C "{{ releases_dir }}/{{ initial_release }}"
+        rsync -a --exclude='.git' "{{ repo_dir }}/" "{{ releases_dir }}/{{ initial_release }}/"
       become: false
 
     - name: Remove cloned .env from initial release

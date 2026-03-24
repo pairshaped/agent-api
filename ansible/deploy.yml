@@ -37,16 +37,11 @@
         dest: "{{ repo_dir }}"
         version: "{{ deploy_ref }}"
         accept_hostkey: true
+        recursive: true
 
-    - name: Create release directory
-      ansible.builtin.file:
-        path: "{{ release_dir }}"
-        state: directory
-        mode: "0755"
-
-    - name: Export repo into release directory
+    - name: Copy repo into release directory
       ansible.builtin.shell: |
-        git -C "{{ repo_dir }}" archive HEAD | tar -x -C "{{ release_dir }}"
+        rsync -a --exclude='.git' "{{ repo_dir }}/" "{{ release_dir }}/"
 
     - name: Remove cloned .env from release
       ansible.builtin.file:
