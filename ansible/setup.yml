@@ -203,35 +203,87 @@
 
     # --- App setup ---
 
-    - name: Clone repo
+    - name: Create releases directory
+      ansible.builtin.file:
+        path: "{{ releases_dir }}"
+        state: directory
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0755"
+
+    - name: Create shared directory
+      ansible.builtin.file:
+        path: "{{ shared_dir }}"
+        state: directory
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0755"
+
+    - name: Create shared db directory
+      ansible.builtin.file:
+        path: "{{ shared_dir }}/db"
+        state: directory
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0755"
+
+    - name: Generate shared .env
+      ansible.builtin.shell: |
+        SECRET=$(openssl rand -hex 32)
+        echo "SESSION_SECRET=$SECRET" > {{ shared_dir }}/.env
+        echo "DOMAIN={{ domain }}" >> {{ shared_dir }}/.env
+        echo "DB_PATH={{ shared_dir }}/db/gleam_mcp_todo.db" >> {{ shared_dir }}/.env
+        echo "PORT=8080" >> {{ shared_dir }}/.env
+      args:
+        creates: "{{ shared_dir }}/.env"
+      become: false
+
+    - name: Generate initial release timestamp
+      ansible.builtin.set_fact:
+        initial_release: "{{ lookup('pipe', 'date +%Y%m%d_%H%M%S') }}"
+
+    - name: Clone repo into initial release
       ansible.builtin.git:
         repo: "{{ repo_url }}"
-        dest: "{{ app_dir }}"
-        version: main
+        dest: "{{ releases_dir }}/{{ initial_release }}"
+        version: "{{ deploy_ref }}"
         accept_hostkey: true
       become: false
 
-    - name: Generate .env
-      ansible.builtin.shell: |
-        SECRET=$(openssl rand -hex 32)
-        echo "SESSION_SECRET=$SECRET" > {{ app_dir }}/.env
-        echo "DOMAIN={{ domain }}" >> {{ app_dir }}/.env
-        echo "DB_PATH={{ app_dir }}/db/gleam_mcp_todo.db" >> {{ app_dir }}/.env
-        echo "PORT=8080" >> {{ app_dir }}/.env
-      args:
-        creates: "{{ app_dir }}/.env"
+    - name: Symlink shared .env into initial release
+      ansible.builtin.file:
+        src: "{{ shared_dir }}/.env"
+        dest: "{{ releases_dir }}/{{ initial_release }}/.env"
+        state: link
+        force: true
       become: false
 
-    - name: Build
+    - name: Symlink shared db into initial release
+      ansible.builtin.file:
+        src: "{{ shared_dir }}/db"
+        dest: "{{ releases_dir }}/{{ initial_release }}/db"
+        state: link
+        force: true
+      become: false
+
+    - name: Build initial release
       ansible.builtin.command:
         cmd: gleam build
-        chdir: "{{ app_dir }}"
+        chdir: "{{ releases_dir }}/{{ initial_release }}"
       become: false
 
     - name: Run migrations
       ansible.builtin.command:
         cmd: bin/migrate
-        chdir: "{{ app_dir }}"
+        chdir: "{{ releases_dir }}/{{ initial_release }}"
+      become: false
+
+    - name: Create current symlink
+      ansible.builtin.file:
+        src: "{{ releases_dir }}/{{ initial_release }}"
+        dest: "{{ current_link }}"
+        state: link
+        force: true
       become: false
 
     - name: Install systemd service
