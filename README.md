@@ -176,13 +176,47 @@ gleam-mcp-todo/
 
 ## Deployment
 
-**Ansible** (recommended):
-```bash
-ansible-playbook ansible/setup.yml -i ansible/inventory.ini -e ansible_user=root  # one-time
-bin/deploy           # ~12 seconds: pull, build, migrate, restart
+### Ansible (recommended)
+
+Uses capistrano-style release directories with atomic symlink swaps. Each deploy creates a new timestamped release, builds in isolation, then swaps a `current` symlink. Rollback repoints the symlink without rebuilding.
+
+```
+/home/deploy/gleam-mcp-todo/
+  releases/
+    20260324_143012/   # each deploy = git clone + gleam build
+    20260324_151530/
+  current -> releases/20260324_151530/   # what systemd runs
+  shared/
+    .env               # persists across deploys
+    db/gleam_mcp_todo.db
 ```
 
-**Docker:**
+**First-time setup:**
+```bash
+# 1. Copy and configure vars
+cp ansible/vars.yml.example ansible/vars.yml
+# Edit ansible/vars.yml with your domain, repo URL, etc.
+
+# 2. Provision the server (run as root for the first time)
+ansible-playbook ansible/setup.yml -i ansible/inventory.ini -e ansible_user=root
+```
+
+**Deploy and rollback:**
+```bash
+bin/deploy           # deploy latest main
+bin/deploy v1.2.0    # deploy a specific tag
+bin/deploy abc123    # deploy a specific commit
+bin/rollback         # roll back to previous release (no rebuild)
+```
+
+Keeps 5 releases. Rollback is instant — just a symlink swap + restart.
+
+**Setup notes:**
+- After the first run, `setup.yml` disables root SSH login. If you need to re-run setup, use `--start-at-task="Install ufw"` to skip Play 1 (the bootstrap play).
+- If you rebuild the server, clear the old host key first: `ssh-keygen -R <ip>` then `ssh-keyscan -H <ip> >> ~/.ssh/known_hosts`.
+
+### Docker
+
 ```bash
 bin/deploy-docker    # pull, rebuild containers, restart
 ```
@@ -191,7 +225,7 @@ bin/deploy-docker    # pull, rebuild containers, restart
 
 The build bottleneck is esqlite — it compiles a C NIF for SQLite (~27s). `gleam export erlang-shipment` always does a clean build, recompiling esqlite every time. Both deploy methods work around this by using `gleam build` instead, which supports incremental compilation and skips esqlite on subsequent builds.
 
-**Ansible** uses `gleam build` directly on the server. The `build/` directory persists between deploys, so esqlite only compiles once. Subsequent deploys recompile only changed app modules (~12 seconds total).
+**Ansible** uses `gleam build` directly on the server. Each release gets a fresh `git clone`, so esqlite recompiles on each deploy. Subsequent builds within the same release are incremental.
 
 **Docker** needs an extra trick because `COPY src/` invalidates the layer cache and `gleam build` starts fresh. The Dockerfile uses a **dummy source step**: before copying real source, it creates a minimal `pub fn main() { Nil }` stub and runs `gleam build` to compile all deps into a cached layer. This layer only rebuilds when `gleam.toml` or `manifest.toml` change. When real source is copied in, the final `gleam build` only recompiles the app module (~0.25s). Note that `gleam deps download` alone isn't enough — it fetches source packages without compiling them or their NIFs.
 
