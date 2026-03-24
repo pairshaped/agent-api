@@ -261,7 +261,7 @@
 
     - name: Copy repo into initial release
       ansible.builtin.shell: |
-        rsync -a --exclude='.git' "{{ repo_dir }}/" "{{ releases_dir }}/{{ initial_release }}/"
+        cp -a "{{ repo_dir }}/." "{{ releases_dir }}/{{ initial_release }}/" && find "{{ releases_dir }}/{{ initial_release }}" -name '.git' -exec rm -rf {} + 2>/dev/null || true
       become: false
 
     - name: Remove cloned .env from initial release
